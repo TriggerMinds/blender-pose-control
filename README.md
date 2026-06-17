@@ -1,49 +1,38 @@
-# Blender Pose Control Generator (2D OpenPose & Silhouette)
+# Grok Imagine DAZ/Blender Proxy Pipeline
 
-This headless Blender Python automation tool generates pure 2D pose-control reference images. These images are perfectly flat, shadowless, and optimized for Grok Imagine ControlNet pose transfer.
+A professional tool that translates external 3D DAZ/Genesis meshes into neutral, non-identifying 3D proxy scenes in Blender, and generates highly specific text prompts for Grok Imagine's 6-second image-to-video extensions.
 
-The tool strictly avoids 3D perspective occlusion by projecting the 3D joint coordinates from `poses.json` onto the chosen camera's local 2D view plane. It then procedurally draws standard OpenPose colored maps and dark grey silhouettes on a flat surface, ensuring maximum readability.
+## Goal
+To abandon "toy mannequins", blob maps, and OpenPose/ControlNet abstract maps. Grok Imagine requires human-readable keyframes and clear textual continuation prompts. This pipeline uses professional DAZ/Genesis topology imported into Blender to match real camera perspectives perfectly on an RTX 2060 SUPER 8GB.
 
 ## Features
-- **Auto-framing**: Dynamically computes the projected bounding box of all joints to tightly scale the orthographic camera. Guarantees 85% frame fill.
-- **OpenPose Mode**: Pure emission bright colors on a black background. Maps standard RGB joint/limb combinations.
-- **Silhouette Mode**: Flat, thick dark grey capsule limbs on a white background to guide mass positioning.
-- **Validation Rules**: Ensures images are rendered natively at 1024x1024 without wasteful empty margins.
+- **DAZ/Genesis Import**: Natively supports importing high-quality `.obj` or `.fbx` external meshes.
+- **Camera Matching**: Translates JSON spatial definitions into perfect Blender camera placements with reference image overlays.
+- **Fast Rendering**: Uses Blender Eevee/Workbench to render lighting-fast, grey-shaded proxies on standard 8GB GPUs without photoreal rendering overhead.
+- **Grok Prompt Engine**: Auto-generates deterministic text prompts forcing Grok to respect specific camera and body motion over a 6-second continuation.
+- **Smoke-Test Mode**: Built-in `--use_placeholder` mode to verify the python pipeline works before acquiring heavy DAZ meshes.
 
-## Installation Assumptions
-- Blender 3.0+ or 4.0+ is installed.
-- `blender` is in your system's PATH.
+## Usage
 
-## Commands
+### 1. Configure the Scene
+Edit `scene_proxy.json` to define your camera position, scene blockouts, and intended motion behaviors.
 
-Run these commands from the root directory (`C:\AI\blender-pose-control`).
-
-### Render All Modes and Angles
-Renders every pose from all 5 angles (front, side, low_side, diagonal, overhead), outputting both OpenPose and Silhouette modes:
+### 2. Run the Blender Camera Match
+To import your DAZ mesh and render previews:
 ```powershell
-blender -b -P .\create_pose_reference.py -- --all --mode all_modes
+blender -b -P .\blender_camera_match_template.py -- --mesh .\assets\posed_human.fbx --reference .\references\input.jpg --scene .\scene_proxy.json --all
 ```
 
-### Specific Pose & Mode
-Render a specific pose in OpenPose mode only:
+*Don't have a DAZ mesh yet? Run a smoke-test:*
 ```powershell
-blender -b -P .\create_pose_reference.py -- --pose "Standing_Weight_Shift" --mode openpose
+blender -b -P .\blender_camera_match_template.py -- --use_placeholder --reference .\references\input.jpg --scene .\scene_proxy.json --all
 ```
 
-### Enable Validation
-Enforce strict bounding box checks to ensure the pose fills 80-90% of the screen. If it doesn't, the script will skip the render and throw a warning:
+### 3. Generate the Grok Prompt
 ```powershell
-blender -b -P .\create_pose_reference.py -- --all --validate
+python .\grok_extend_prompt_generator.py --scene .\scene_proxy.json
 ```
 
-### Test Mode
-Render the first pose in the JSON from the front view to quickly verify settings:
-```powershell
-blender -b -P .\create_pose_reference.py -- --test
-```
-
-## Adding Custom Poses
-1. Open `poses.json`.
-2. Add a new key under `"poses"`.
-3. Provide normalized 3D coordinates `[X, Y, Z]` for the required joints.
-   *(The script automatically centers these coordinates during projection).*
+## Hardware Profile
+Optimized for: **Windows 11 | NVIDIA RTX 2060 SUPER (8GB VRAM)**.
+Does not rely on heavy local PyTorch installations for mesh generation.

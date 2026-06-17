@@ -1,146 +1,84 @@
-import bpy
 import json
-import math
-import mathutils
 import sys
 import argparse
 import os
 
-# --- OPENPOSE COLORS ---
-OP_COLORS = {
-    'head': (1.0, 0.0, 0.0, 1.0),
-    'neck': (1.0, 0.33, 0.0, 1.0),
-    'shoulder_r': (1.0, 0.66, 0.0, 1.0),
-    'elbow_r': (1.0, 1.0, 0.0, 1.0),
-    'wrist_r': (0.66, 1.0, 0.0, 1.0),
-    'hand_r': (0.66, 1.0, 0.0, 1.0),
-    'shoulder_l': (0.33, 1.0, 0.0, 1.0),
-    'elbow_l': (0.0, 1.0, 0.0, 1.0),
-    'wrist_l': (0.0, 1.0, 0.33, 1.0),
-    'hand_l': (0.0, 1.0, 0.33, 1.0),
-    'chest': (1.0, 0.0, 0.0, 1.0),
-    'pelvis': (1.0, 0.0, 0.0, 1.0),
-    'hip_r': (0.0, 0.66, 1.0, 1.0),
-    'knee_r': (0.0, 0.33, 1.0, 1.0),
-    'ankle_r': (0.0, 0.0, 1.0, 1.0),
-    'foot_r': (0.0, 0.0, 1.0, 1.0),
-    'hip_l': (0.33, 0.0, 1.0, 1.0),
-    'knee_l': (0.66, 0.0, 1.0, 1.0),
-    'ankle_l': (1.0, 0.0, 1.0, 1.0),
-    'foot_l': (1.0, 0.0, 1.0, 1.0),
-}
+GROK_EXTEND_TEMPLATE = """Use the final frame as the exact first frame of a 6-second continuation. Preserve the same subject, outfit state, room layout, lighting direction, camera angle, anatomy, fabric behavior and photorealistic continuity.
 
-def clean_scene():
-    bpy.ops.wm.read_factory_settings(use_empty=True)
+{camera_move} {body_move} Do not combine multiple actions. Do not reset the scene. Do not reinterpret the pose.
 
-def setup_environment(resolution, mode):
-    bpy.context.scene.render.engine = 'CYCLES'
-    bpy.context.scene.cycles.device = 'GPU'
-    bpy.context.scene.cycles.samples = 32 # Emission only needs very few samples
-    bpy.context.scene.render.resolution_x = resolution
-    bpy.context.scene.render.resolution_y = resolution
-    bpy.context.scene.render.resolution_percentage = 100
-    bpy.context.scene.render.film_transparent = False
+Increase visual tension through camera proximity, body-line geometry, subtle weight shift, breathing, hand pressure, fabric tension, surface compression, flash or light falloff and shadow depth.
+
+Timing: first second stays locked to the current frame. Middle seconds introduce one controlled camera move and one controlled body move. Final second settles into the strongest composition.
+
+Keep the motion physically coherent, photorealistic and continuous. No new people, no new props, no outfit change, no scene reset, no camera teleportation, no broken hands, no warped limbs, no changed identity."""
+
+def generate_text_prompts(pose_name, pose_data, output_dir):
+    desc_path = os.path.join(output_dir, f"{pose_name}_target_pose_description.txt")
+    keyframe_path = os.path.join(output_dir, f"{pose_name}_grok_keyframe_prompt.txt")
+    extend_path = os.path.join(output_dir, f"{pose_name}_grok_extend_prompt.txt")
     
-    # Disable color management so hex colors are pure
-    bpy.context.scene.view_settings.view_transform = 'Standard'
+    desc = pose_data.get("pose_description", "")
+    cam_move = pose_data.get("camera_move", "")
+    body_move = pose_data.get("body_move", "")
+    
+    with open(desc_path, "w") as f:
+        f.write(desc)
+        
+    with open(keyframe_path, "w") as f:
+        f.write(f"Photorealistic cinematic shot. {desc} High visual tension, detailed anatomy, hyper-realistic lighting, 8k resolution.")
+        
+    extend_prompt = GROK_EXTEND_TEMPLATE.format(camera_move=cam_move, body_move=body_move)
+    with open(extend_path, "w") as f:
+        f.write(extend_prompt)
+        
+    print(f"Generated text prompts for {pose_name}")
 
-    world = bpy.context.scene.world
-    if not world:
-        world = bpy.data.worlds.new("World")
-        bpy.context.scene.world = world
+def render_preview(pose_name, pose_data, output_dir):
+    try:
+        import bpy
+        import mathutils
+        import math
+    except ImportError:
+        print("Blender (bpy) not available in this environment. Skipping 3D preview.")
+        return
+        
+    print(f"Generating 3D preview for {pose_name}...")
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    
+    bpy.context.scene.render.engine = 'CYCLES'
+    bpy.context.scene.render.resolution_x = 1024
+    bpy.context.scene.render.resolution_y = 1024
+    
+    world = bpy.data.worlds.new("World")
+    bpy.context.scene.world = world
     world.use_nodes = True
     bg = world.node_tree.nodes.get('Background')
     if bg:
-        if mode == 'openpose':
-            bg.inputs[0].default_value = (0.0, 0.0, 0.0, 1.0) # Black
-        else:
-            bg.inputs[0].default_value = (1.0, 1.0, 1.0, 1.0) # White
-        bg.inputs[1].default_value = 1.0
+        bg.inputs[0].default_value = (0.2, 0.2, 0.2, 1.0)
+    
+    mat_grey = bpy.data.materials.new(name="MatteGrey")
+    mat_grey.use_nodes = True
+    bsdf = mat_grey.node_tree.nodes.get("Principled BSDF")
+    if bsdf:
+        bsdf.inputs['Base Color'].default_value = (0.5, 0.5, 0.5, 1.0)
+        bsdf.inputs['Roughness'].default_value = 0.8
+        
+    # Joints
+    for j_name, j_loc in pose_data.items():
+        if not isinstance(j_loc, list) or len(j_loc) != 3:
+            continue
+        radius = 0.08 if 'head' in j_name or 'chest' in j_name or 'pelvis' in j_name else 0.05
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=radius, location=j_loc)
+        obj = bpy.context.active_object
+        obj.data.materials.append(mat_grey)
+        bpy.ops.object.shade_smooth()
 
-def create_emission_material(name, color):
-    mat = bpy.data.materials.new(name=name)
-    mat.use_nodes = True
-    nodes = mat.node_tree.nodes
-    nodes.clear()
-    
-    emission = nodes.new(type='ShaderNodeEmission')
-    emission.inputs['Color'].default_value = color
-    emission.inputs['Strength'].default_value = 1.0
-    
-    output = nodes.new(type='ShaderNodeOutputMaterial')
-    mat.node_tree.links.new(emission.outputs['Emission'], output.inputs['Surface'])
-    return mat
-
-def get_2d_projection(points, camera_loc, target_loc):
-    cam_loc = mathutils.Vector(camera_loc)
-    targ_loc = mathutils.Vector(target_loc)
-    direction = targ_loc - cam_loc
-    if direction.length == 0:
-        direction = mathutils.Vector((0, -1, 0))
-    rot_quat = direction.to_track_quat('-Z', 'Y')
-    mat_rot = rot_quat.to_matrix().to_4x4()
-    mat_loc = mathutils.Matrix.Translation(cam_loc)
-    cam_matrix = mat_loc @ mat_rot
-    inv_cam_matrix = cam_matrix.inverted()
-    
-    projected = {}
-    for k, v in points.items():
-        p_local = inv_cam_matrix @ mathutils.Vector(v)
-        # X is right, Y is up in camera space, Z is negative depth.
-        projected[k] = mathutils.Vector((p_local.x, p_local.y, p_local.z))
-    return projected
-
-def create_flat_cylinder(name, loc1, loc2, radius, material, z_offset):
-    loc1 = mathutils.Vector(loc1)
-    loc2 = mathutils.Vector(loc2)
-    direction = loc2 - loc1
-    length = direction.length
-    if length == 0:
-        return
-    center = loc1 + direction / 2.0
-    rot = direction.to_track_quat('Y', 'Z')
-    
-    # Create flat cylinder on XY plane
-    bpy.ops.mesh.primitive_cylinder_add(radius=radius, depth=length, location=(center.x, center.y, z_offset))
-    obj = bpy.context.active_object
-    obj.name = name
-    obj.rotation_euler = rot.to_euler()
-    # Flatten it so it's a 2D line without overlapping issues
-    obj.scale[2] = 0.001 
-    obj.data.materials.append(material)
-    bpy.ops.object.shade_smooth()
-
-def create_flat_disc(name, loc, radius, material, z_offset):
-    bpy.ops.mesh.primitive_cylinder_add(radius=radius, depth=0.001, location=(loc[0], loc[1], z_offset))
-    obj = bpy.context.active_object
-    obj.name = name
-    obj.data.materials.append(material)
-    bpy.ops.object.shade_smooth()
-
-def build_2d_pose(projected_points, mode):
-    # Calculate bounding box
-    min_x = min(p.x for p in projected_points.values())
-    max_x = max(p.x for p in projected_points.values())
-    min_y = min(p.y for p in projected_points.values())
-    max_y = max(p.y for p in projected_points.values())
-    
-    center_x = (min_x + max_x) / 2.0
-    center_y = (min_y + max_y) / 2.0
-    
-    # Center the points
-    centered_points = {k: mathutils.Vector((p.x - center_x, p.y - center_y, p.z)) for k, p in projected_points.items()}
-    
-    # Depth sorting: sort by z (depth) to ensure foreground objects render on top. 
-    # More negative Z = further away. We want further away to have lower z_offset.
-    sorted_keys = sorted(centered_points.keys(), key=lambda k: centered_points[k].z)
-    z_map = {k: i * 0.0001 for i, k in enumerate(sorted_keys)}
-    
+    # Bones
     bones = [
         ('head', 'neck'), ('neck', 'chest'), ('chest', 'pelvis'),
-        ('shoulder_r', 'shoulder_l'), ('hip_r', 'hip_l'), # Cross connections
+        ('shoulder_r', 'shoulder_l'), ('hip_r', 'hip_l'),
         ('neck', 'shoulder_l'), ('neck', 'shoulder_r'),
-        ('chest', 'shoulder_l'), ('chest', 'shoulder_r'),
         ('pelvis', 'hip_l'), ('pelvis', 'hip_r'),
         ('shoulder_l', 'elbow_l'), ('elbow_l', 'wrist_l'), ('wrist_l', 'hand_l'),
         ('shoulder_r', 'elbow_r'), ('elbow_r', 'wrist_r'), ('wrist_r', 'hand_r'),
@@ -148,115 +86,70 @@ def build_2d_pose(projected_points, mode):
         ('hip_r', 'knee_r'), ('knee_r', 'ankle_r'), ('ankle_r', 'foot_r')
     ]
     
-    materials = {}
-    if mode == 'openpose':
-        for k, color in OP_COLORS.items():
-            materials[k] = create_emission_material(f"mat_{k}", color)
-    else:
-        mat_grey = create_emission_material("mat_silhouette", (0.2, 0.2, 0.2, 1.0))
-        for k in OP_COLORS.keys():
-            materials[k] = mat_grey
-
-    # Generate bones (lines)
     for b1, b2 in bones:
-        if b1 in centered_points and b2 in centered_points:
-            z_offset = (z_map[b1] + z_map[b2]) / 2.0
-            radius = 0.015 if mode == 'openpose' else 0.05
-            # Torso bones are thicker in silhouette
-            if mode == 'silhouette' and b1 in ['head', 'neck', 'chest', 'pelvis', 'shoulder_l', 'shoulder_r', 'hip_l', 'hip_r']:
-                if b2 in ['neck', 'chest', 'pelvis', 'shoulder_l', 'shoulder_r', 'hip_l', 'hip_r']:
-                    radius = 0.08
-            mat = materials.get(b2, materials.get(b1))
-            create_flat_cylinder(f"bone_{b1}_{b2}", centered_points[b1], centered_points[b2], radius, mat, z_offset)
+        if b1 in pose_data and b2 in pose_data:
+            loc1 = mathutils.Vector(pose_data[b1])
+            loc2 = mathutils.Vector(pose_data[b2])
+            direction = loc2 - loc1
+            length = direction.length
+            if length == 0: continue
+            center = loc1 + direction / 2.0
+            rot = direction.to_track_quat('Z', 'Y')
+            bpy.ops.mesh.primitive_cylinder_add(radius=0.04, depth=length, location=center)
+            obj = bpy.context.active_object
+            obj.rotation_euler = rot.to_euler()
+            obj.data.materials.append(mat_grey)
+            bpy.ops.object.shade_smooth()
             
-    # Generate joints (dots)
-    for j_name, j_loc in centered_points.items():
-        z_offset = z_map[j_name] + 0.005 # Joints slightly above their connecting bones
-        radius = 0.03 if mode == 'openpose' else 0.06
-        if 'head' in j_name or 'chest' in j_name or 'pelvis' in j_name:
-            radius = 0.05 if mode == 'openpose' else 0.1
-        mat = materials.get(j_name)
-        create_flat_disc(f"joint_{j_name}", j_loc, radius, mat, z_offset)
-
-    width = max_x - min_x
-    height = max_y - min_y
-    return width, height
-
-def render_pose(pose_name, pose_data, cameras_to_render, modes_to_render, resolution, output_dir, validate):
-    # Calculate 3D center for target
-    c_x = sum(v[0] for v in pose_data.values()) / len(pose_data)
-    c_y = sum(v[1] for v in pose_data.values()) / len(pose_data)
-    c_z = sum(v[2] for v in pose_data.values()) / len(pose_data)
-    target_loc = (c_x, c_y, c_z)
-
-    preset_locs = {
-        'front': (c_x, c_y - 3.5, c_z),
-        'side': (c_x + 3.5, c_y, c_z),
-        'low_side': (c_x + 3.0, c_y - 1.0, c_z - 0.5),
-        'diagonal': (c_x + 2.5, c_y - 2.5, c_z + 0.5),
-        'overhead': (c_x, c_y - 0.1, c_z + 3.5)
-    }
-
-    for cam_name in cameras_to_render:
-        if cam_name not in preset_locs:
-            continue
-        
-        projected_points = get_2d_projection(pose_data, preset_locs[cam_name], target_loc)
-        
-        for mode in modes_to_render:
-            clean_scene()
-            setup_environment(resolution, mode)
-            
-            width, height = build_2d_pose(projected_points, mode)
-            
-            # Setup Actual Render Camera (Orthographic, Top-Down)
-            cam_data = bpy.data.cameras.new("RenderCam")
-            cam_data.type = 'ORTHO'
-            # We want the max span to fill 85% of the frame
-            max_span = max(width, height)
-            if max_span == 0:
-                max_span = 0.1
-            cam_data.ortho_scale = max_span / 0.85
-            
-            cam_obj = bpy.data.objects.new("RenderCam", cam_data)
-            bpy.context.collection.objects.link(cam_obj)
-            cam_obj.location = (0, 0, 10)
-            cam_obj.rotation_euler = (0, 0, 0)
-            bpy.context.scene.camera = cam_obj
-            
-            if validate:
-                # Validation check: Ensure fill ratio is between 0.80 and 0.90
-                # By definition, the max span fills 85% of ortho_scale.
-                # However, if width/height is extremely small, we throw an error.
-                if max_span < 0.1:
-                    print(f"VALIDATION FAILED: {pose_name} from {cam_name} has a bounding box too small.")
-                    continue
-
-            out_path = os.path.join(output_dir, f"{pose_name}_{cam_name}_{mode}.png")
-            bpy.context.scene.render.filepath = out_path
-            bpy.ops.render.render(write_still=True)
-            print(f"Rendered {out_path}")
+    c_x = sum(v[0] for k,v in pose_data.items() if isinstance(v, list)) / 20.0
+    c_y = sum(v[1] for k,v in pose_data.items() if isinstance(v, list)) / 20.0
+    c_z = sum(v[2] for k,v in pose_data.items() if isinstance(v, list)) / 20.0
+    
+    cam_data = bpy.data.cameras.new("PreviewCam")
+    cam_obj = bpy.data.objects.new("PreviewCam", cam_data)
+    bpy.context.collection.objects.link(cam_obj)
+    cam_obj.location = (c_x + 3.0, c_y - 3.0, c_z + 1.0)
+    
+    ttc = cam_obj.constraints.new(type='TRACK_TO')
+    bpy.ops.object.empty_add(type='PLAIN_AXES', location=(c_x, c_y, c_z))
+    ttc.target = bpy.context.active_object
+    ttc.track_axis = 'TRACK_NEGATIVE_Z'
+    ttc.up_axis = 'UP_Y'
+    
+    bpy.context.scene.camera = cam_obj
+    
+    light_data = bpy.data.lights.new(name="Light", type='SUN')
+    light_data.energy = 2.0
+    light_ob = bpy.data.objects.new(name="Light", object_data=light_data)
+    bpy.context.collection.objects.link(light_ob)
+    light_ob.rotation_euler = (math.radians(45), 0, math.radians(45))
+    
+    out_path = os.path.join(output_dir, f"{pose_name}_preview.png")
+    bpy.context.scene.render.filepath = out_path
+    bpy.ops.render.render(write_still=True)
+    print(f"Preview saved to {out_path}")
 
 def main():
-    if "--" not in sys.argv:
-        print("Please pass arguments after '--', e.g., blender -b -P script.py -- --all")
-        return
-        
-    args_list = sys.argv[sys.argv.index("--") + 1:]
+    # Detect if running via Blender or standard Python
+    in_blender = False
+    try:
+        import bpy
+        in_blender = True
+    except ImportError:
+        pass
+
+    args_list = sys.argv[1:]
+    if in_blender and "--" in sys.argv:
+        args_list = sys.argv[sys.argv.index("--") + 1:]
     
-    parser = argparse.ArgumentParser(description="Generate Pose Control References")
-    parser.add_argument("--pose", type=str, help="Specific pose to render")
-    parser.add_argument("--camera", type=str, help="Specific camera preset to render")
-    parser.add_argument("--all", action="store_true", help="Render all poses")
-    parser.add_argument("--test", action="store_true", help="Render test pose")
-    parser.add_argument("--resolution", type=int, default=1024, help="Output resolution")
-    parser.add_argument("--mode", type=str, choices=['openpose', 'silhouette', 'all_modes'], default='all_modes', help="Render mode")
-    parser.add_argument("--debug_helpers", action="store_true", help="Enable 3D debug helpers (disabled by default in 2D mode)")
-    parser.add_argument("--validate", action="store_true", help="Enforce framing validation rules")
+    parser = argparse.ArgumentParser(description="Grok Keyframe & Prompt Generator")
+    parser.add_argument("--pose", type=str, help="Specific pose to generate")
+    parser.add_argument("--all", action="store_true", help="Generate all poses")
+    parser.add_argument("--preview", action="store_true", help="Generate a simple 3D mannequin preview PNG (Requires Blender)")
     
     args = parser.parse_args(args_list)
     
-    out_dir = os.path.abspath("renders/pose_controls")
+    out_dir = os.path.abspath("renders/grok_prompts")
     os.makedirs(out_dir, exist_ok=True)
     
     poses_file = "poses.json"
@@ -268,33 +161,23 @@ def main():
         poses_json = json.load(f)
         poses = poses_json.get("poses", {})
         
-    modes_to_render = ['openpose', 'silhouette'] if args.mode == 'all_modes' else [args.mode]
-        
-    if args.test:
-        test_pose_name = list(poses.keys())[0]
-        print(f"Running test on pose: {test_pose_name}")
-        render_pose(test_pose_name, poses[test_pose_name], ['front'], modes_to_render, args.resolution, out_dir, args.validate)
-        return
-        
-    poses_to_render = []
+    poses_to_run = []
     if args.pose:
         if args.pose in poses:
-            poses_to_render.append(args.pose)
+            poses_to_run.append(args.pose)
         else:
             print(f"Pose '{args.pose}' not found in poses.json")
             return
     elif args.all:
-        poses_to_render = list(poses.keys())
+        poses_to_run = list(poses.keys())
     else:
-        print("Please specify --pose <name>, --all, or --test")
+        print("Please specify --pose <name> or --all")
         return
         
-    cams_to_render = ['front', 'side', 'low_side', 'diagonal', 'overhead']
-    if args.camera:
-        cams_to_render = [args.camera]
-        
-    for p_name in poses_to_render:
-        render_pose(p_name, poses[p_name], cams_to_render, modes_to_render, args.resolution, out_dir, args.validate)
+    for p_name in poses_to_run:
+        generate_text_prompts(p_name, poses[p_name], out_dir)
+        if args.preview:
+            render_preview(p_name, poses[p_name], out_dir)
 
 if __name__ == "__main__":
     main()

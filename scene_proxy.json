@@ -1,0 +1,39 @@
+{
+    "project_name": "Proxy Keyframer Pivot",
+    "reference_image_path": ".\\references\\input.jpg",
+    "mesh_path": "",
+    "camera": {
+        "position": [0.0, -2.5, 1.0],
+        "rotation": [1.2, 0.0, 0.0],
+        "focal_length": 50.0,
+        "sensor_width": 36.0
+    },
+    "scene_blockout": [
+        {
+            "type": "box",
+            "name": "cushion",
+            "location": [0.0, 0.0, -0.3],
+            "dimensions": [1.5, 2.0, 0.6]
+        }
+    ],
+    "subject_orientation": "Prone, lying flat on stomach, facing away from camera",
+    "pose_notes": "Knees bent 90 degrees upwards, soles of feet pointing up. Arms resting forward.",
+    "surface_contact_points": "Torso, hips, and thighs are in contact with the cushion.",
+    "current_frame_description": "Subject lying prone on a rectangular cushion. Torso and thighs flat against the surface. Knees bent at a 90-degree angle with feet pointing upward. Arms extended forward out of frame.",
+    "next_motion": {
+        "camera_behavior": "Camera slowly dollies forward and slightly upward, increasing tension along the spine.",
+        "body_behavior": "Subject subtly arches their lower back, shifting weight slightly while keeping knees bent.",
+        "timing": "6-second continuation"
+    },
+    "grok_prompt_constraints": [
+        "preserve current frame",
+        "preserve subject, outfit state, room, lighting, camera angle and anatomy continuity",
+        "one camera move",
+        "one body move",
+        "6-second timing",
+        "no scene reset",
+        "no changed identity",
+        "no broken anatomy",
+        "physically coherent continuation"
+    ]
+}

@@ -1,0 +1,30 @@
+SCENE: Proxy Keyframer Pivot
+----------------------------------------
+GROK IMAGINE EXTENSION PROMPT (6-SECONDS)
+----------------------------------------
+CORE INSTRUCTIONS:
+- preserve current frame
+- preserve subject, outfit state, room, lighting, camera angle and anatomy continuity
+- one camera move
+- one body move
+- 6-second timing
+- no scene reset
+- no changed identity
+- no broken anatomy
+- physically coherent continuation
+
+CURRENT STATE (FRAME 0):
+Subject lying prone on a rectangular cushion. Torso and thighs flat against the surface. Knees bent at a 90-degree angle with feet pointing upward. Arms extended forward out of frame.
+Subject Orientation: Prone, lying flat on stomach, facing away from camera
+Pose: Knees bent 90 degrees upwards, soles of feet pointing up. Arms resting forward.
+Surface Contact: Torso, hips, and thighs are in contact with the cushion.
+
+MOTION DIRECTIVE (SECONDS 1-6):
+Timing: 6-second continuation
+Camera Action: Camera slowly dollies forward and slightly upward, increasing tension along the spine.
+Body Action: Subject subtly arches their lower back, shifting weight slightly while keeping knees bent.
+
+----------------------------------------
+PROMPT FOR GROK (COPY/PASTE):
+----------------------------------------
+Continue this scene for 6 seconds. The first frame must exactly match the input image. Preserve the exact identity, outfit state, room layout, lighting direction, camera angle, and anatomical proportions. Do not reset the scene or change the context. Action: Subject subtly arches their lower back, shifting weight slightly while keeping knees bent.. Camera: Camera slowly dollies forward and slightly upward, increasing tension along the spine.. Keep the motion physically coherent, photorealistic, and continuous. No new people, no new props, no outfit change.

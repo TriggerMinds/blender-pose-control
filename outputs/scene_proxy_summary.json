@@ -1,0 +1,10 @@
+{
+    "status": "success",
+    "proxy_type": "Neutral 3D Primitive Proxy",
+    "metadata_used": {
+        "pose_description": "Subject lying prone on a rectangular cushion. Torso and thighs flat against the surface. Knees bent at a 90-degree angle with feet pointing upward. Arms extended forward out of frame.",
+        "camera_move": "Camera slowly dollies forward and slightly upward, increasing tension along the spine.",
+        "body_move": "Subject subtly arches their lower back, shifting weight slightly while keeping knees bent."
+    },
+    "environment_blocks": 2
+}
