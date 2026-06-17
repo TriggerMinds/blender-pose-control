@@ -1,49 +1,49 @@
-# Blender Pose Control Generator
+# Blender Pose Control Generator (2D OpenPose & Silhouette)
 
-This is a headless Blender Python automation tool that generates neutral pose-control reference images. These images are optimized for Grok Imagine image-to-video pose transfer.
+This headless Blender Python automation tool generates pure 2D pose-control reference images. These images are perfectly flat, shadowless, and optimized for Grok Imagine ControlNet pose transfer.
+
+The tool strictly avoids 3D perspective occlusion by projecting the 3D joint coordinates from `poses.json` onto the chosen camera's local 2D view plane. It then procedurally draws standard OpenPose colored maps and dark grey silhouettes on a flat surface, ensuring maximum readability.
+
+## Features
+- **Auto-framing**: Dynamically computes the projected bounding box of all joints to tightly scale the orthographic camera. Guarantees 85% frame fill.
+- **OpenPose Mode**: Pure emission bright colors on a black background. Maps standard RGB joint/limb combinations.
+- **Silhouette Mode**: Flat, thick dark grey capsule limbs on a white background to guide mass positioning.
+- **Validation Rules**: Ensures images are rendered natively at 1024x1024 without wasteful empty margins.
 
 ## Installation Assumptions
-
-1. **Blender**: Ensure Blender 3.0+ or 4.0+ is installed on your system.
-2. **PATH Environment Variable**: Ensure the `blender` executable is added to your system's PATH.
-
-## Overview
-
-The generator runs completely headlessly. It procedurally constructs a basic mannequin from spheres and cylinders based on normalized 3D joint coordinates defined in `poses.json`. It also generates visual helpers (spine curve, shoulder/hip axes, contact points, and weight/camera arrows).
+- Blender 3.0+ or 4.0+ is installed.
+- `blender` is in your system's PATH.
 
 ## Commands
 
-Run these commands from the root directory of this project (`C:\AI\blender-pose-control`).
+Run these commands from the root directory (`C:\AI\blender-pose-control`).
 
-### Test Run
-Render a quick test using the first pose in your JSON, outputting to the `front` camera at 1024x1024:
+### Render All Modes and Angles
+Renders every pose from all 5 angles (front, side, low_side, diagonal, overhead), outputting both OpenPose and Silhouette modes:
+```powershell
+blender -b -P .\create_pose_reference.py -- --all --mode all_modes
+```
+
+### Specific Pose & Mode
+Render a specific pose in OpenPose mode only:
+```powershell
+blender -b -P .\create_pose_reference.py -- --pose "Standing_Weight_Shift" --mode openpose
+```
+
+### Enable Validation
+Enforce strict bounding box checks to ensure the pose fills 80-90% of the screen. If it doesn't, the script will skip the render and throw a warning:
+```powershell
+blender -b -P .\create_pose_reference.py -- --all --validate
+```
+
+### Test Mode
+Render the first pose in the JSON from the front view to quickly verify settings:
 ```powershell
 blender -b -P .\create_pose_reference.py -- --test
 ```
 
-### Render One Pose
-Render a specific pose across all 5 camera angles:
-```powershell
-blender -b -P .\create_pose_reference.py -- --pose "Standing_Weight_Shift"
-```
-
-### Render All Poses
-Render all poses across all camera angles, and generate a contact-sheet overview from the diagonal renders:
-```powershell
-blender -b -P .\create_pose_reference.py -- --all
-```
-
-### Custom Settings
-You can combine arguments, specify a single camera, or change the resolution:
-```powershell
-blender -b -P .\create_pose_reference.py -- --pose "Seated_Side_Lean" --camera "diagonal" --resolution 2048
-```
-
-## How to Add New Poses
-
+## Adding Custom Poses
 1. Open `poses.json`.
-2. Add a new key under the `"poses"` object with your pose name (e.g., `"My_Custom_Pose"`).
-3. Provide normalized 3D coordinates `[X, Y, Z]` for the required joints:
-   `head, neck, chest, pelvis, shoulder_l, shoulder_r, elbow_l, elbow_r, wrist_l, wrist_r, hand_l, hand_r, hip_l, hip_r, knee_l, knee_r, ankle_l, ankle_r, foot_l, foot_r`
-   
-*(Note: X is roughly Left/Right, Y is Front/Back, Z is Up/Down. Assume Z=0 is floor level. A value of Z <= 0.06 automatically generates a surface contact point).*
+2. Add a new key under `"poses"`.
+3. Provide normalized 3D coordinates `[X, Y, Z]` for the required joints.
+   *(The script automatically centers these coordinates during projection).*
